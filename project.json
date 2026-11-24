@@ -1,0 +1,9 @@
+{
+  "name": "Transit Isochrone",
+  "cat": "Maps & Data",
+  "icon": "rings",
+  "desc": "Reachable-area maps from transit data.",
+  "path": "transit-isochrone/",
+  "live": true,
+  "img": "icons/rings.jpg"
+}
