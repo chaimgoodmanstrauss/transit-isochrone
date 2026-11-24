@@ -102,7 +102,7 @@
   <form method="dialog">
     <h3 style="margin-top:0">TravelTime API credentials</h3>
     <p style="font-size:12px;color:var(--muted)">
-      Free key at <a href="https://traveltime.com/register" target="_blank">traveltime.com/register</a>.
+      Free key: sign up at <a href="https://account.traveltime.com/" target="_blank" rel="noopener">account.traveltime.com</a>, then copy the Application ID and API Key from your dashboard.
       Stored only in this browser (localStorage).
     </p>
     <label style="font-size:12px">Application ID</label>
@@ -206,7 +206,7 @@ qEl.addEventListener("keydown", async e => {
     const r = await fetch(`${API}/geocoding/search?query=${encodeURIComponent(query)}&limit=6`, {
       headers: authHeaders()
     });
-    if (!r.ok) throw new Error(await r.text());
+    if (!r.ok) throw await apiError(r);
     const gj = await r.json();
     resultsEl.innerHTML = "";
     (gj.features || []).forEach(f => {
@@ -226,6 +226,14 @@ qEl.addEventListener("keydown", async e => {
     setStatus("Geocoding failed: " + trimErr(err), true);
   }
 });
+
+async function apiError(r) {
+  if (r.status === 401 || r.status === 403) {
+    openCreds();
+    return new Error("TravelTime rejected the credentials — check the Application ID and API Key.");
+  }
+  return new Error(await r.text());
+}
 
 function trimErr(err) {
   const s = String(err.message || err);
@@ -270,7 +278,7 @@ document.getElementById("go").onclick = async () => {
           }]
         })
       });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) throw await apiError(r);
       const gj = await r.json();
       if (!gj.features || !gj.features.length) continue;
       const color = BAND_COLORS[i] || BAND_COLORS[BAND_COLORS.length - 1];
@@ -293,7 +301,7 @@ document.getElementById("go").onclick = async () => {
   }
 };
 
-if (!haveCreds()) openCreds();
+if (!haveCreds()) setStatus("Click the map or search to set an origin. A TravelTime key (API credentials…) is needed to compute areas.");
 </script>
 </body>
 </html>
