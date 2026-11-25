@@ -1,9 +1,9 @@
 {
-  "name": "Transit Isochrone",
+  "name": "Walking Isochrone",
   "cat": "Maps & Data",
   "icon": "rings",
-  "desc": "Reachable-area maps from transit data.",
+  "desc": "How far you can walk in a given time, from any starting point.",
   "path": "transit-isochrone/",
-  "live": false,
+  "live": true,
   "img": "icons/rings.jpg"
 }
