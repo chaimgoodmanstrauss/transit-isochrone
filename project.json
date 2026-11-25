@@ -4,6 +4,6 @@
   "icon": "rings",
   "desc": "Reachable-area maps from transit data.",
   "path": "transit-isochrone/",
-  "live": true,
+  "live": false,
   "img": "icons/rings.jpg"
 }
