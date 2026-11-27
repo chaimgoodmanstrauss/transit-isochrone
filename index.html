@@ -47,7 +47,7 @@
   }
 
   .panel {
-    position: absolute; top: 12px; left: 56px; z-index: 1000; width: 300px; max-width: calc(100vw - 72px);
+    position: absolute; top: 12px; left: 56px; z-index: 1000; width: 240px; max-width: calc(100vw - 72px);
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 38px 16px 14px; box-shadow: var(--shadow-md);
   }
@@ -68,19 +68,19 @@
 
   .search { position: relative; }
   .search input {
-    width: 100%; padding: 8px 38px 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
     background: var(--surface); color: var(--text); font: inherit; box-shadow: var(--shadow-sm);
     transition: border-color .15s ease;
   }
   .search input:focus { outline: none; border-color: var(--accent); }
   #here {
-    position: absolute; top: 50%; right: 4px; transform: translateY(-50%);
-    width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm);
+    position: absolute; top: 6px; right: 16px;
+    width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%;
     background: transparent; color: var(--text-muted); cursor: pointer;
     display: grid; place-items: center; transition: background-color .15s ease, color .15s ease;
   }
   #here:hover { background: var(--bg); color: var(--accent); }
-  #here svg { width: 18px; height: 18px; }
+  #here svg { width: 24px; height: 24px; }
 
   #searchResults { list-style: none; margin: 4px 0 0; padding: 0; max-height: 160px; overflow-y: auto; }
   #searchResults li { padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
@@ -88,7 +88,7 @@
 
   .row { display: flex; gap: 10px; align-items: center; }
   .row input[type=range] { flex: 1; accent-color: var(--accent); }
-  .row output { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  .row output { text-align: left; white-space: pre; font-variant-numeric: tabular-nums; font-weight: 500; }
 
   .status { font-size: 12px; margin-top: 10px; min-height: 16px; color: var(--text-muted); }
   .status:empty { display: none; }
@@ -101,20 +101,20 @@
 
 <div class="panel" id="panel">
   <button type="button" id="closePanel" title="Hide controls" aria-label="Hide controls">&times;</button>
+  <button type="button" id="here" title="Use my current location" aria-label="Use my current location">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/>
+    </svg>
+  </button>
   <div class="search">
     <input type="text" id="q" placeholder="Address or landmark, then Enter" aria-label="Address or landmark">
-    <button type="button" id="here" title="Use my current location" aria-label="Use my current location">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/>
-      </svg>
-    </button>
   </div>
   <ul id="searchResults"></ul>
 
   <label for="mins">Max walking time</label>
   <div class="row">
+    <output id="minsOut"> 30 minutes</output>
     <input type="range" id="mins" min="5" max="120" step="5" value="30">
-    <output id="minsOut">30 min</output>
   </div>
 
   <div class="status" id="status"></div>
@@ -125,6 +125,7 @@
 <script>
 const VALHALLA = "https://valhalla1.openstreetmap.de/isochrone";
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+const NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse";
 // Public CARTO key shared with Symmetry Stroller (browser-visible by design).
 const CARTO_API_KEY = "YOUR_CARTO_KEY";
 // The public Valhalla server caps time contours at 60 min but allows
@@ -166,9 +167,7 @@ const minsEl = document.getElementById("mins");
 const minsOut = document.getElementById("minsOut");
 
 function fmtMins(m) {
-  if (m < 60) return m + " min";
-  const h = Math.floor(m / 60), r = m % 60;
-  return r ? `${h} h ${r} min` : `${h} h`;
+  return m + " minutes";
 }
 
 // Progress messages ("…") stay until replaced; any other message clears itself.
@@ -181,19 +180,37 @@ function setStatus(msg, isErr) {
   if (msg && !msg.endsWith("…")) statusTimer = setTimeout(() => setStatus(""), isErr ? 6000 : 4000);
 }
 
+// Keep the text field (and pin popup) naming wherever the pin is.
+// Without a known label, show coordinates, then the reverse-geocoded address.
+let labelSeq = 0;
+function labelPin(lat, lng, label) {
+  const seq = ++labelSeq;
+  const apply = text => {
+    if (seq !== labelSeq) return;
+    qEl.value = text;
+    originMarker.unbindPopup().bindPopup(text);
+  };
+  if (label) return apply(label);
+  apply(lat.toFixed(5) + ", " + lng.toFixed(5));
+  fetch(`${NOMINATIM_REVERSE}?lat=${lat}&lon=${lng}&format=jsonv2&zoom=18`)
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if (j && j.display_name) apply(j.display_name); })
+    .catch(() => {});
+}
+
 function setOrigin(lat, lng, label) {
   origin = { lat, lng };
   if (originMarker) originMarker.remove();
   originMarker = L.marker([lat, lng], { draggable: true, autoPan: true }).addTo(map);
-  if (label) originMarker.bindPopup(label);
   originMarker.on("dblclick", e => { L.DomEvent.stop(e); showPanel(true); });
   originMarker.on("dragend", e => {
     const p = e.target.getLatLng();
     origin = { lat: p.lat, lng: p.lng };
-    e.target.unbindPopup();
-    qEl.value = "";
+    labelPin(p.lat, p.lng);
     computeArea(false);
   });
+  resultsEl.innerHTML = "";
+  labelPin(lat, lng, label);
   computeArea(true);
 }
 
@@ -208,7 +225,8 @@ L.DomEvent.disableScrollPropagation(panelEl);
 
 map.on("click", e => { showPanel(false); setOrigin(e.latlng.lat, e.latlng.lng); });
 
-minsEl.oninput = () => minsOut.textContent = fmtMins(+minsEl.value);
+// always "XXX minutes", padded with figure spaces so the slider never shifts
+minsEl.oninput = () => minsOut.textContent = String(+minsEl.value).padStart(3, "\u2007") + " minutes";
 minsEl.onchange = () => computeArea(false);
 
 // ---- current location ----
@@ -218,8 +236,7 @@ document.getElementById("here").onclick = () => {
   navigator.geolocation.getCurrentPosition(
     pos => {
       resultsEl.innerHTML = "";
-      qEl.value = "Current location";
-      setOrigin(pos.coords.latitude, pos.coords.longitude, "Current location");
+      setOrigin(pos.coords.latitude, pos.coords.longitude);
     },
     err => setStatus("Couldn't get your location: " + err.message, true),
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
@@ -243,7 +260,6 @@ qEl.addEventListener("keydown", async e => {
       li.textContent = h.display_name;
       li.onclick = () => {
         resultsEl.innerHTML = "";
-        qEl.value = li.textContent;
         setOrigin(+h.lat, +h.lon, li.textContent);
       };
       resultsEl.appendChild(li);
@@ -311,7 +327,6 @@ async function computeArea(fit) {
 }
 
 // default start: Empire State Building, 30 min walk (slider default)
-qEl.value = "Empire State Building";
 setOrigin(40.748440, -73.985664, "Empire State Building");
 </script>
 </body>
