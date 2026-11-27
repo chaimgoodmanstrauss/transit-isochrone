@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Walking Isochrone</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
   integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
@@ -27,7 +27,7 @@
   html, body { height: 100%; margin: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 13px; color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased;
+    font-size: 14.5px; color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased;
   }
   #map { position: absolute; inset: 0; background: var(--bg); }
 
@@ -47,7 +47,7 @@
   }
 
   .panel {
-    position: absolute; top: 12px; left: 56px; z-index: 1000; width: 240px; max-width: calc(100vw - 72px);
+    position: absolute; top: 12px; left: 56px; z-index: 1000; width: 270px; max-width: calc(100vw - 72px);
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 38px 16px 14px; box-shadow: var(--shadow-md);
   }
@@ -64,7 +64,8 @@
   .panel-toggle.hidden { display: none; }
   .panel-toggle a { display: grid !important; place-items: center; color: #000; }
   .panel-toggle svg { width: 16px; height: 16px; }
-  .panel label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin: 12px 0 4px; }
+  .panel label { display: block; font-size: 13.5px; font-weight: 500; color: var(--text-muted); margin: 12px 0 4px; }
+  .panel label.first { margin-top: 0; }
 
   .search { position: relative; }
   .search input {
@@ -83,36 +84,55 @@
   #here svg { width: 24px; height: 24px; }
 
   #searchResults { list-style: none; margin: 4px 0 0; padding: 0; max-height: 160px; overflow-y: auto; }
-  #searchResults li { padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
+  #searchResults li { padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13.5px; }
   #searchResults li:hover { background: var(--bg); }
 
   .row { display: flex; gap: 10px; align-items: center; }
   .row input[type=range] { flex: 1; accent-color: var(--accent); }
   .row output { text-align: left; white-space: pre; font-variant-numeric: tabular-nums; font-weight: 500; }
 
-  .status { font-size: 12px; margin-top: 10px; min-height: 16px; color: var(--text-muted); }
+  .status { font-size: 13.5px; margin-top: 10px; min-height: 18px; color: var(--text-muted); }
   .status:empty { display: none; }
   .status.err { color: var(--danger); }
+  /* Light hover tips: appear after a short pause near the pointer, vanish on leave or press. */
+  #tip {
+    position: fixed; z-index: 2000; pointer-events: none; max-width: 250px;
+    padding: 5px 9px; border: 1px solid var(--border); border-radius: 5px;
+    background: rgba(255,255,255,.96); color: var(--text-muted); font-size: 14.5px; line-height: 1.35;
+    box-shadow: var(--shadow-sm); opacity: 0; transition: opacity .12s ease;
+  }
+  #tip.on { opacity: 1; }
+  /* touch screens: fingertip-sized panel buttons, keep the page itself from scrolling/zooming */
+  html, body { overflow: hidden; overscroll-behavior: none; }
+  @media (pointer: coarse) {
+    .panel { padding-top: 50px; top: calc(12px + env(safe-area-inset-top)); }
+    #closePanel, #here { width: 36px; height: 36px; }
+    #closePanel { font-size: 24px; }
+    #here svg { width: 28px; height: 28px; }
+    #tip { display: none; }
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="tip" role="tooltip"></div>
 <div id="title"><span class="title-main">Walking Isochrone</span><span class="title-sub">How far can you get?</span></div>
 
 <div class="panel" id="panel">
-  <button type="button" id="closePanel" title="Hide controls" aria-label="Hide controls">&times;</button>
-  <button type="button" id="here" title="Use my current location" aria-label="Use my current location">
+  <button type="button" id="closePanel" aria-label="Hide controls">&times;</button>
+  <button type="button" id="here" aria-label="Use my current location">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/>
     </svg>
   </button>
+  <label for="q" class="first">from</label>
   <div class="search">
     <input type="text" id="q" placeholder="Address or landmark, then Enter" aria-label="Address or landmark">
   </div>
   <ul id="searchResults"></ul>
 
-  <label for="mins">max walking time</label>
-  <div class="row">
+  <label for="mins">walking time</label>
+  <div class="row" id="minsRow">
     <output id="minsOut"> 30 minutes</output>
     <input type="range" id="mins" min="5" max="120" step="5" value="30">
   </div>
@@ -141,7 +161,7 @@ const PanelToggle = L.Control.extend({
   options: { position: "topleft" },
   onAdd() {
     const div = L.DomUtil.create("div", "leaflet-bar leaflet-control panel-toggle hidden");
-    div.innerHTML = '<a href="#" role="button" title="Show controls" aria-label="Show controls">' +
+    div.innerHTML = '<a href="#" role="button" aria-label="Show controls">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">' +
       '<path d="M4 6h16M4 12h16M4 18h16"/></svg></a>';
     L.DomEvent.disableClickPropagation(div);
@@ -149,7 +169,7 @@ const PanelToggle = L.Control.extend({
     return div;
   }
 });
-L.control.zoom({ position: "topleft" }).addTo(map);
+const zoomControl = L.control.zoom({ position: "topleft" }).addTo(map);
 const panelToggle = new PanelToggle().addTo(map);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=" + CARTO_API_KEY, {
   maxZoom: 20, maxNativeZoom: 19,
@@ -165,6 +185,65 @@ const qEl = document.getElementById("q");
 const resultsEl = document.getElementById("searchResults");
 const minsEl = document.getElementById("mins");
 const minsOut = document.getElementById("minsOut");
+
+// ---- light hover tips (mouse only; 2 s delay) ----
+const tipEl = document.getElementById("tip");
+let tipTimer = null, tipX = 0, tipY = 0;
+function placeTip() {
+  const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+  tipEl.style.left = Math.min(tipX + 12, innerWidth - w - 6) + "px";
+  tipEl.style.top = (tipY + 20 + h > innerHeight ? tipY - h - 8 : tipY + 20) + "px";
+}
+function tipMove(ev) { tipX = ev.clientX; tipY = ev.clientY; if (tipEl.classList.contains("on")) placeTip(); }
+// Safari has no sourceCapabilities, so a tap's emulated mouseover would pop a tip: ignore mouse events right after a touch.
+let lastTouch = 0;
+addEventListener("touchstart", () => { lastTouch = Date.now(); tipHide(); }, { capture: true, passive: true });
+function tipShow(ev, html) {
+  if (ev.pointerType === "touch" || (ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents)) return;
+  if (Date.now() - lastTouch < 1500) return;
+  tipMove(ev);
+  clearTimeout(tipTimer);
+  tipEl.classList.remove("on");   // no stale text from the previous box
+  tipTimer = setTimeout(() => { tipEl.innerHTML = html; placeTip(); tipEl.classList.add("on"); }, 2000);
+}
+function tipHide() { clearTimeout(tipTimer); tipEl.classList.remove("on"); }
+function attachTip(el, html) {
+  el.addEventListener("mouseenter", e => tipShow(e, html));
+  el.addEventListener("mousemove", tipMove);
+  el.addEventListener("mouseleave", tipHide);
+  el.addEventListener("mousedown", tipHide);
+}
+function attachLayerTip(layer, html) {
+  layer.on("mouseover", e => tipShow(e.originalEvent, html));
+  layer.on("mousemove", e => tipMove(e.originalEvent));
+  layer.on("mouseout mousedown dragstart", tipHide);
+}
+attachTip(qEl, "Type an address or landmark, then Enter");
+attachTip(minsOut, "Longest walk");   // separately, so moving text <-> slider (e.g. after a drag hid it) re-shows it
+attachTip(minsEl, "Longest walk");
+attachTip(document.getElementById("closePanel"), "Hide controls");
+attachTip(document.getElementById("here"), "Use my current location");
+attachTip(panelToggle.getContainer().firstChild, "Show controls");
+// zoom buttons: drop Leaflet's native title tooltips, use the same tip box as everything else
+[[".leaflet-control-zoom-in", "Zoom in"], [".leaflet-control-zoom-out", "Zoom out"]].forEach(([sel, txt]) => {
+  const a = zoomControl.getContainer().querySelector(sel);
+  a.removeAttribute("title");
+  attachTip(a, txt);
+});
+// bare map (not over a control, shape or pin): "drag map"
+const mapEl = map.getContainer();
+let mapTipOn = false;
+mapEl.addEventListener("mouseover", e => {
+  const bare = !e.target.closest(".leaflet-control, .leaflet-interactive");
+  if (bare && !mapTipOn) { mapTipOn = true; tipShow(e, "drag map"); }
+  else if (!bare && mapTipOn) {
+    mapTipOn = false;
+    if (!e.target.closest(".leaflet-interactive")) tipHide();  // shapes/pin set their own tip
+  }
+});
+mapEl.addEventListener("mousemove", tipMove);
+mapEl.addEventListener("mouseleave", () => { mapTipOn = false; tipHide(); });
+mapEl.addEventListener("mousedown", tipHide);
 
 function fmtMins(m) {
   return m + " minutes";
@@ -182,20 +261,24 @@ function setStatus(msg, isErr) {
 
 // Keep the text field (and pin popup) naming wherever the pin is.
 // Without a known label, show coordinates, then the reverse-geocoded address.
-let labelSeq = 0;
-function labelPin(lat, lng, label) {
-  const seq = ++labelSeq;
-  const apply = text => {
-    if (seq !== labelSeq) return;
-    qEl.value = text;
-    originMarker.unbindPopup().bindPopup(text);
+let lookupSeq = 0, lastLookup = 0, lookupTimer = null;
+function labelPin(lat, lng, label, dragging) {
+  const show = text => { qEl.value = text; originMarker.unbindPopup().bindPopup(text); };
+  clearTimeout(lookupTimer);
+  if (label) { lookupSeq++; return show(label); }      // drop any lookup still in flight
+  // while dragging, keep the last address until a newer one arrives
+  if (!dragging) show(lat.toFixed(5) + ", " + lng.toFixed(5));
+  // reverse lookups at most ~1/s (Nominatim usage policy); the newest one sent wins
+  const lookup = () => {
+    const seq = ++lookupSeq;
+    lastLookup = Date.now();
+    fetch(`${NOMINATIM_REVERSE}?lat=${lat}&lon=${lng}&format=jsonv2&zoom=18`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (seq === lookupSeq && j && j.display_name) show(j.display_name); })
+      .catch(() => {});
   };
-  if (label) return apply(label);
-  apply(lat.toFixed(5) + ", " + lng.toFixed(5));
-  fetch(`${NOMINATIM_REVERSE}?lat=${lat}&lon=${lng}&format=jsonv2&zoom=18`)
-    .then(r => r.ok ? r.json() : null)
-    .then(j => { if (j && j.display_name) apply(j.display_name); })
-    .catch(() => {});
+  const wait = lastLookup + 1000 - Date.now();
+  if (wait > 0) lookupTimer = setTimeout(lookup, wait); else lookup();
 }
 
 function setOrigin(lat, lng, label) {
@@ -203,6 +286,11 @@ function setOrigin(lat, lng, label) {
   if (originMarker) originMarker.remove();
   originMarker = L.marker([lat, lng], { draggable: true, autoPan: true }).addTo(map);
   originMarker.on("dblclick", e => { L.DomEvent.stop(e); showPanel(true); });
+  attachLayerTip(originMarker, "drag or click to move");
+  originMarker.on("drag", e => {
+    const p = e.target.getLatLng();
+    labelPin(p.lat, p.lng, null, true);
+  });
   originMarker.on("dragend", e => {
     const p = e.target.getLatLng();
     origin = { lat: p.lat, lng: p.lng };
@@ -223,7 +311,7 @@ document.getElementById("closePanel").onclick = () => showPanel(false);
 L.DomEvent.disableClickPropagation(panelEl);
 L.DomEvent.disableScrollPropagation(panelEl);
 
-map.on("click", e => { showPanel(false); setOrigin(e.latlng.lat, e.latlng.lng); });
+map.on("click", e => setOrigin(e.latlng.lat, e.latlng.lng));
 
 // always "XXX minutes", padded with figure spaces so the slider never shifts
 minsEl.oninput = () => minsOut.textContent = String(+minsEl.value).padStart(3, "\u2007") + " minutes";
@@ -311,7 +399,8 @@ async function computeArea(fit) {
       const color = BAND_COLORS[i];
       const layer = L.geoJSON(f, {
         style: { color, weight: 1, fillColor: color, fillOpacity: 0.2 }
-      }).bindTooltip(`${fmtMins(Math.round(bands[i].mins))} walk`, { sticky: true });
+      });
+      attachLayerTip(layer, `${fmtMins(Math.round(bands[i].mins))} walk`);
       layer.addTo(overlay);
       bounds = bounds ? bounds.extend(layer.getBounds()) : layer.getBounds();
     });
