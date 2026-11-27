@@ -37,6 +37,7 @@
     color: #4a1030; opacity: 0.92; text-align: right;
     text-shadow: 0 0 4px #fff, 0 0 12px #fff, 0 0 28px rgba(255,255,255,.9), 0 4px 36px rgba(255,255,255,.8);
   }
+  #title span { width: fit-content; margin-left: auto; }   /* hover tip on the words only (hit-tested, so the map keeps its hand cursor and drags) */
   #title .title-main {
     display: block; font-weight: 600;
     font-size: clamp(28px, 4vw, 56px); line-height: 1.05; letter-spacing: 0.01em;
@@ -171,6 +172,7 @@ const PanelToggle = L.Control.extend({
 });
 const zoomControl = L.control.zoom({ position: "topleft" }).addTo(map);
 const panelToggle = new PanelToggle().addTo(map);
+L.control.scale({ position: "bottomleft", maxWidth: 120 }).addTo(map);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=" + CARTO_API_KEY, {
   maxZoom: 20, maxNativeZoom: 19,
   attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>'
@@ -233,16 +235,29 @@ attachTip(panelToggle.getContainer().firstChild, "Show controls");
 // bare map (not over a control, shape or pin): "drag map"
 const mapEl = map.getContainer();
 let mapTipOn = false;
-mapEl.addEventListener("mouseover", e => {
+// The title is pointer-events: none (map cursor + drag pass through), so its tip is found by hit-testing the words.
+const TITLE_TIP = "Walking from a given spot for a given amount of time, how far can you get?";
+const titleSpans = [...document.querySelectorAll("#title span")];
+let titleTipOn = false;
+const overTitle = e => titleSpans.some(el => {
+  const r = el.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+});
+function mapTipUpdate(e) {
+  const onTitle = overTitle(e);
+  if (onTitle && !titleTipOn) { titleTipOn = true; mapTipOn = false; tipShow(e, TITLE_TIP); return; }
+  if (onTitle) return;
+  if (titleTipOn) { titleTipOn = false; tipHide(); }
   const bare = !e.target.closest(".leaflet-control, .leaflet-interactive");
   if (bare && !mapTipOn) { mapTipOn = true; tipShow(e, "drag map"); }
   else if (!bare && mapTipOn) {
     mapTipOn = false;
     if (!e.target.closest(".leaflet-interactive")) tipHide();  // shapes/pin set their own tip
   }
-});
-mapEl.addEventListener("mousemove", tipMove);
-mapEl.addEventListener("mouseleave", () => { mapTipOn = false; tipHide(); });
+}
+mapEl.addEventListener("mouseover", mapTipUpdate);
+mapEl.addEventListener("mousemove", e => { mapTipUpdate(e); tipMove(e); });
+mapEl.addEventListener("mouseleave", () => { mapTipOn = titleTipOn = false; tipHide(); });
 mapEl.addEventListener("mousedown", tipHide);
 
 function fmtMins(m) {
